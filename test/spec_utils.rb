@@ -243,6 +243,11 @@ describe Rack::Utils do
     end
   end
 
+  should "not split query params at ; by default" do
+    Rack::Utils.parse_nested_query("foo=bar;foo=quux").
+      should.equal "foo" => "bar;foo=quux"
+  end
+
   should "build query strings correctly" do
     Rack::Utils.build_query("foo" => "bar").should.be equal_query_to("foo=bar")
     Rack::Utils.build_query("foo" => ["bar", "quux"]).

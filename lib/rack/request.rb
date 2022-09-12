@@ -188,7 +188,7 @@ module Rack
       if @env["rack.request.query_string"] == query_string
         @env["rack.request.query_hash"]
       else
-        p = parse_query({ :query => query_string, :separator => '&;' })
+        p = parse_query({ :query => query_string, :separator => '&' })
         @env["rack.request.query_string"] = query_string
         @env["rack.request.query_hash"]   = p
       end
