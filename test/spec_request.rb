@@ -3,6 +3,7 @@ require 'cgi'
 require 'rack/request'
 require 'rack/mock'
 require 'securerandom'
+require 'timeout'
 
 describe Rack::Request do
   should "wrap the rack variables" do
@@ -781,7 +782,7 @@ EOF
     f[:tempfile].size.should.equal 76
   end
 
-  should "MultipartPartLimitError when request has too many multipart parts if limit set" do
+  should "MultipartPartLimitError when request has too many multipart file parts if limit set" do
     begin
       data = 10000.times.map { "--AaB03x\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; name=#{SecureRandom.hex(10)}; filename=#{SecureRandom.hex(10)}\r\n\r\ncontents\r\n" }.join("\r\n")
       data += "--AaB03x--\r"
@@ -794,6 +795,22 @@ EOF
 
       request = Rack::Request.new Rack::MockRequest.env_for("/", options)
       lambda { request.POST }.should.raise(Rack::Multipart::MultipartPartLimitError)
+    end
+  end
+
+  should "MultipartPartLimitError when request has too many multipart total parts if limit set" do
+    begin
+      data = 10000.times.map { |i| "--AaB03x\r\ncontent-type: text/plain\r\ncontent-disposition: attachment; name=#{i.to_s(16)}\r\n\r\ncontents\r\n" }.join("\r\n")
+      data += "--AaB03x--\r"
+
+      options = {
+        "CONTENT_TYPE" => "multipart/form-data; boundary=AaB03x",
+        "CONTENT_LENGTH" => data.length.to_s,
+        :input => StringIO.new(data)
+      }
+
+      request = Rack::Request.new Rack::MockRequest.env_for("/", options)
+      lambda { request.POST }.should.raise(Rack::Multipart::MultipartTotalPartLimitError)
     end
   end
 
@@ -1030,6 +1047,12 @@ EOF
       Rack::Request.new(Rack::MockRequest.env_for("", "HTTP_ACCEPT_ENCODING" => x)).accept_encoding
     end
 
+    parser_with_timeout = lambda do |x, timeout|
+      Timeout.timeout(timeout) do
+        parser.call(x)
+      end
+    end
+
     parser.call(nil).should.equal([])
 
     parser.call("compress, gzip").should.equal([["compress", 1.0], ["gzip", 1.0]])
@@ -1040,11 +1063,19 @@ EOF
 
     parser.call("gzip ; q=0.9").should.equal([["gzip", 0.9]])
     parser.call("gzip ; deflate").should.equal([["gzip", 1.0]])
+
+    parser_with_timeout.call(" " * 10000 + "a,", 0.01).should.equal([["a", 1.0]])
   end
 
   should "parse Accept-Language correctly" do
     parser = lambda do |x|
       Rack::Request.new(Rack::MockRequest.env_for("", "HTTP_ACCEPT_LANGUAGE" => x)).accept_language
+    end
+
+    parser_with_timeout = lambda do |x, timeout|
+      Timeout.timeout(timeout) do
+        parser.call(x)
+      end
     end
 
     parser.call(nil).should.equal([])
@@ -1057,6 +1088,8 @@ EOF
 
     parser.call("fr ; q=0.9").should.equal([["fr", 0.9]])
     parser.call("fr").should.equal([["fr", 1.0]])
+
+    parser_with_timeout.call(" " * 10000 + "a,", 0.01).should.equal([["a", 1.0]])
   end
 
   ip_app = lambda { |env|

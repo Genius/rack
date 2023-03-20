@@ -81,7 +81,7 @@ describe Rack::Utils do
   
   should "not hang on escaping long strings that end in % (http://redmine.ruby-lang.org/issues/5149)" do
     lambda {
-      timeout(1) do
+      Timeout.timeout(1) do
         lambda {
           URI.decode_www_form_component "A string that causes catastrophic backtracking as it gets longer %"
         }.should.raise(ArgumentError)
@@ -353,6 +353,11 @@ describe Rack::Utils do
 
     # When there are no matches, return nil:
     Rack::Utils.best_q_match("application/json", %w[text/html text/plain]).should.equal nil
+
+    # Avoids DoS
+    Timeout.timeout(0.01) do
+      Rack::Utils.best_q_match(" " * 10000 + "a,", %w[text/html])
+    end
   end
 
   should "escape html entities [&><'\"/]" do
