@@ -465,6 +465,10 @@ describe Rack::Utils do
 end
 
 describe Rack::Utils, "byte_range" do
+  should "return an empty list if the sum of  the byte ranges is too large" do
+    Rack::Utils.byte_ranges({ "HTTP_RANGE" => "bytes=0-20,0-500" }, 500).should.equal []
+  end
+
   should "ignore missing or syntactically invalid byte ranges" do
     Rack::Utils.byte_ranges({},500).should.equal nil
     Rack::Utils.byte_ranges({"HTTP_RANGE" => "foobar"},500).should.equal nil
