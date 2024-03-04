@@ -57,12 +57,18 @@ module Rack
     end
     module_function :unescape
 
-    DEFAULT_SEP = /[&;] */n
+    DEFAULT_SEP = /& */n
 
     class << self
       attr_accessor :key_space_limit
       attr_accessor :param_depth_limit
-      attr_accessor :multipart_part_limit
+      attr_accessor :multipart_total_part_limit
+      attr_accessor :multipart_file_limit
+
+      # multipart_part_limit is the original name of multipart_file_limit, but
+      # the limit only counts parts with filenames.
+      alias multipart_part_limit multipart_file_limit
+      alias multipart_part_limit= multipart_file_limit=
     end
 
     # The default number of bytes to allow parameter keys to take up.
@@ -73,11 +79,15 @@ module Rack
     # being too deep.  This helps prevent SystemStackErrors
     self.param_depth_limit = 100
 
-    # The maximum number of parts a request can contain. Accepting too many part
+    # The maximum number of file parts a request can contain. Accepting too many parts
     # can lead to the server running out of file handles.
     # Set to `0` for no limit.
     # FIXME: RACK_MULTIPART_LIMIT was introduced by mistake and it will be removed in 1.7.0
-    self.multipart_part_limit = (ENV['RACK_MULTIPART_PART_LIMIT'] || ENV['RACK_MULTIPART_LIMIT'] || 128).to_i
+    self.multipart_file_limit = (ENV['RACK_MULTIPART_FILE_LIMIT'] || ENV['RACK_MULTIPART_PART_LIMIT'] || ENV['RACK_MULTIPART_LIMIT'] || 128).to_i
+
+    # The maximum total number of parts a request can contain. Accepting too
+    # many can lead to excessive memory use and parsing time.
+    self.multipart_total_part_limit = (ENV['RACK_MULTIPART_TOTAL_PART_LIMIT'] || 4096).to_i
 
     # Stolen from Mongrel, with some small modifications:
     # Parses a query string by breaking it up at the '&'
@@ -203,7 +213,7 @@ module Rack
     module_function :build_nested_query
 
     def q_values(q_value_header)
-      q_value_header.to_s.split(/\s*,\s*/).map do |part|
+      q_value_header.to_s.split(",").each(&:strip!).map do |part|
         value, parameters = part.split(/\s*;\s*/, 2)
         quality = 1.0
         if md = /\Aq=([\d.]+)/.match(parameters)
@@ -393,6 +403,9 @@ module Rack
     end
     module_function :rfc2822
 
+    RFC2822_DAY_NAME = defined?(Time::RFC2822_DAY_NAME) ? Time::RFC2822_DAY_NAME : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    RFC2822_MONTH_NAME = defined?(Time::RFC2822_MONTH_NAME) ? Time::RFC2822_MONTH_NAME : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
     # Modified version of stdlib time.rb Time#rfc2822 to use '%d-%b-%Y' instead
     # of '% %b %Y'.
     # It assumes that the time is in GMT to comply to the RFC 2109.
@@ -401,10 +414,9 @@ module Rack
     # that I'm certain someone implemented only that option.
     # Do not use %a and %b from Time.strptime, it would use localized names for
     # weekday and month.
-    #
     def rfc2109(time)
-      wday = Time::RFC2822_DAY_NAME[time.wday]
-      mon = Time::RFC2822_MONTH_NAME[time.mon - 1]
+      wday = RFC2822_DAY_NAME[time.wday]
+      mon = RFC2822_MONTH_NAME[time.mon - 1]
       time.strftime("#{wday}, %d-#{mon}-%Y %H:%M:%S GMT")
     end
     module_function :rfc2109
@@ -418,17 +430,18 @@ module Rack
       return nil unless http_range && http_range =~ /bytes=([^;]+)/
       ranges = []
       $1.split(/,\s*/).each do |range_spec|
-        return nil  unless range_spec =~ /(\d*)-(\d*)/
-        r0,r1 = $1, $2
-        if r0.empty?
-          return nil  if r1.empty?
+        return nil unless range_spec.include?('-')
+        range = range_spec.split('-')
+        r0, r1 = range[0], range[1]
+        if r0.nil? || r0.empty?
+          return nil if r1.nil?
           # suffix-byte-range-spec, represents trailing suffix of file
           r0 = size - r1.to_i
           r0 = 0  if r0 < 0
           r1 = size - 1
         else
           r0 = r0.to_i
-          if r1.empty?
+          if r1.nil?
             r1 = size - 1
           else
             r1 = r1.to_i
@@ -438,6 +451,10 @@ module Rack
         end
         ranges << (r0..r1)  if r0 <= r1
       end
+
+      total_size = ranges.reduce(0) { |sum, range| sum + range.size }
+      return [] if total_size > size
+
       ranges
     end
     module_function :byte_ranges

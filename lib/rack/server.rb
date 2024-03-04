@@ -284,7 +284,11 @@ module Rack
         end
       end
 
-      server.run wrapped_app, options, &blk
+      if RUBY_VERSION >= '3'
+        server.run wrapped_app, **options, &blk
+      else
+        server.run wrapped_app, options, &blk
+      end
     end
 
     def server

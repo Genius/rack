@@ -42,7 +42,11 @@ module Rack
     # For more information on the use of media types in HTTP, see:
     # http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7
     def media_type
-      content_type && content_type.split(/\s*[;,]\s*/, 2).first.downcase
+      if content_type && (type = content_type.split(/[;,]/, 2).first)
+        type.rstrip!
+        type.downcase!
+        type
+      end
     end
 
     # The media type parameters provided in CONTENT_TYPE as a Hash, or
@@ -52,8 +56,8 @@ module Rack
     #   { 'charset' => 'utf-8' }
     def media_type_params
       return {} if content_type.nil?
-      Hash[*content_type.split(/\s*[;,]\s*/)[1..-1].
-        collect { |s| s.split('=', 2) }.
+      Hash[*content_type.split(/[;,]/)[1..-1].
+        collect { |s| s.strip.split('=', 2) }.
         map { |k,v| [k.downcase, strip_doublequotes(v)] }.flatten]
     end
 
@@ -188,7 +192,7 @@ module Rack
       if @env["rack.request.query_string"] == query_string
         @env["rack.request.query_hash"]
       else
-        p = parse_query({ :query => query_string, :separator => '&;' })
+        p = parse_query({ :query => query_string, :separator => '&' })
         @env["rack.request.query_string"] = query_string
         @env["rack.request.query_hash"]   = p
       end
@@ -383,8 +387,8 @@ module Rack
       end
 
       def parse_http_accept_header(header)
-        header.to_s.split(/\s*,\s*/).map do |part|
-          attribute, parameters = part.split(/\s*;\s*/, 2)
+        header.to_s.split(",").each(&:strip!).map do |part|
+          attribute, parameters = part.split(";", 2).each(&:strip!)
           quality = 1.0
           if parameters and /\Aq=([\d.]+)/ =~ parameters
             quality = $1.to_f

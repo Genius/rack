@@ -81,7 +81,7 @@ describe Rack::Utils do
   
   should "not hang on escaping long strings that end in % (http://redmine.ruby-lang.org/issues/5149)" do
     lambda {
-      timeout(1) do
+      Timeout.timeout(1) do
         lambda {
           URI.decode_www_form_component "A string that causes catastrophic backtracking as it gets longer %"
         }.should.raise(ArgumentError)
@@ -243,6 +243,11 @@ describe Rack::Utils do
     end
   end
 
+  should "not split query params at ; by default" do
+    Rack::Utils.parse_nested_query("foo=bar;foo=quux").
+      should.equal "foo" => "bar;foo=quux"
+  end
+
   should "build query strings correctly" do
     Rack::Utils.build_query("foo" => "bar").should.be equal_query_to("foo=bar")
     Rack::Utils.build_query("foo" => ["bar", "quux"]).
@@ -348,6 +353,11 @@ describe Rack::Utils do
 
     # When there are no matches, return nil:
     Rack::Utils.best_q_match("application/json", %w[text/html text/plain]).should.equal nil
+
+    # Avoids DoS
+    Timeout.timeout(0.01) do
+      Rack::Utils.best_q_match(" " * 10000 + "a,", %w[text/html])
+    end
   end
 
   should "escape html entities [&><'\"/]" do
@@ -455,6 +465,10 @@ describe Rack::Utils do
 end
 
 describe Rack::Utils, "byte_range" do
+  should "return an empty list if the sum of  the byte ranges is too large" do
+    Rack::Utils.byte_ranges({ "HTTP_RANGE" => "bytes=0-20,0-500" }, 500).should.equal []
+  end
+
   should "ignore missing or syntactically invalid byte ranges" do
     Rack::Utils.byte_ranges({},500).should.equal nil
     Rack::Utils.byte_ranges({"HTTP_RANGE" => "foobar"},500).should.equal nil
