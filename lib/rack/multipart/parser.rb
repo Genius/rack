@@ -48,6 +48,8 @@ module Rack
 
         @rx = /(?:#{EOL})?#{Regexp.quote(@boundary)}(#{EOL}|--)/n
         @full_boundary = @boundary + EOL
+
+        @retained_size = 0
       end
 
       def parse
@@ -78,6 +80,7 @@ module Rack
           # Save the rest.
           if i = @buf.index(rx)
             body << @buf.slice!(0, i)
+            update_retained_size(i) unless filename
             @buf.slice!(0, @boundary_size+2)
 
             @content_length = -1  if $1 == "--"
@@ -134,6 +137,7 @@ module Rack
 
             @buf.slice!(0, 2)          # Second \r\n
 
+            update_retained_size(head.bytesize)
             content_type = head[MULTIPART_CONTENT_TYPE, 1]
             name = head[MULTIPART_CONTENT_DISPOSITION, 1] || head[MULTIPART_CONTENT_ID, 1]
 
@@ -152,8 +156,10 @@ module Rack
           end
 
           # Save the read body part.
-          if head && (@boundary_size+4 < @buf.size)
-            body << @buf.slice!(0, @buf.size - (@boundary_size+4))
+          size_to_read = @buf.size - (@boundary_size+4)
+          if head && size_to_read > 0
+            body << @buf.slice!(0, size_to_read)
+            update_retained_size(size_to_read) unless filename
           end
 
           content = @io.read(@content_length && @bufsize >= @content_length ? @content_length : @bufsize)
@@ -268,6 +274,13 @@ module Rack
         end
 
         yield data
+      end
+
+      def update_retained_size(size)
+        @retained_size += size
+        if @retained_size > Utils.buffered_upload_bytesize_limit
+          raise EOFError, "multipart data over retained size limit"
+        end
       end
     end
   end
