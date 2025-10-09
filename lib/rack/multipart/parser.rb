@@ -7,6 +7,7 @@ module Rack
 
     class Parser
       BUFSIZE = 16384
+      MIME_HEADER_BYTESIZE_LIMIT = 64 * 1024
       DUMMY = Struct.new(:parse).new
 
       def self.create(env)
@@ -70,7 +71,7 @@ module Rack
             parts += 1
             if parts >= Utils.multipart_total_part_limit
               close_tempfiles
-              raise MultipartTotalPartLimitError, 'Maximum total multiparts in content reached' 
+              raise MultipartTotalPartLimitError, 'Maximum total multiparts in content reached'
             end
           end
 
@@ -113,7 +114,7 @@ module Rack
             return if read_buffer == full_boundary
           end
 
-          raise EOFError, "bad content body" if Utils.bytesize(@buf) >= @bufsize
+          raise EOFError, "multipart boundary not found within limit" if Utils.bytesize(@buf) >= @bufsize
         end
       end
 
@@ -159,6 +160,9 @@ module Rack
           raise EOFError, "bad content body"  if content.nil? || content.empty?
 
           @buf << content
+
+          raise EOFError, "multipart mime part header too large" if @buf.size > MIME_HEADER_BYTESIZE_LIMIT
+
           @content_length -= content.size if @content_length
         end
 
