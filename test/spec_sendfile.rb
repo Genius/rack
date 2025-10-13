@@ -22,12 +22,12 @@ describe Rack::Sendfile do
     lambda { |env| [200, {'Content-Type' => 'text/plain'}, body] }
   end
 
-  def sendfile_app(body, mappings = [])
-    Rack::Lint.new Rack::Sendfile.new(simple_app(body), nil, mappings)
+  def sendfile_app(body, mappings = [], variation = nil)
+    Rack::Lint.new Rack::Sendfile.new(simple_app(body), variation, mappings)
   end
 
-  def request(headers={}, body=sendfile_body, mappings=[])
-    yield Rack::MockRequest.new(sendfile_app(body, mappings)).get('/', headers)
+  def request(headers={}, body=sendfile_body, mappings=[], variation=nil)
+    yield Rack::MockRequest.new(sendfile_app(body, mappings, variation)).get('/', headers)
   end
 
   def open_file(path)
@@ -43,6 +43,42 @@ describe Rack::Sendfile do
       response.should.be.ok
       response.body.should.equal 'Hello World'
       response.headers.should.not.include 'X-Sendfile'
+    end
+  end
+
+  it "does nothing and logs to rack.errors when incorrect X-Sendfile-Type header present" do
+    io = StringIO.new
+    request 'HTTP_X_SENDFILE_TYPE' => 'X-Banana', 'rack.errors' => io do |response|
+      response.should.be.ok
+      response.body.should.equal 'Hello World'
+      response.headers.should.not.include 'X-Sendfile'
+
+      io.rewind
+      io.read.should.equal "Unknown or unsafe x-sendfile variation: \"X-Banana\"\n"
+    end
+  end
+
+  it "does nothing and logs to rack.errors when incorrect variation is configured" do
+    io = StringIO.new
+    request({ 'rack.errors' => io }, sendfile_body, [], 'X-Banana') do |response|
+      response.should.be.ok
+      response.body.should.equal 'Hello World'
+      response.headers.should.not.include 'X-Sendfile'
+
+      io.rewind
+      io.read.should.equal "Unknown x-sendfile variation: \"X-Banana\"\n"
+    end
+  end
+
+  it "does not send multi-line headers for invalid multi-line X-Sendfile-Type values" do
+    io = StringIO.new
+    request 'HTTP_X_SENDFILE_TYPE' => "Hello\nCVE-2025-27111", 'rack.errors' => io do |response|
+      response.should.be.ok
+      response.body.should.equal 'Hello World'
+      response.headers.should.not.include 'X-Sendfile'
+
+      io.rewind
+      io.read.should.equal "Unknown or unsafe x-sendfile variation: \"Hello\\nCVE-2025-27111\"\n"
     end
   end
 
@@ -64,12 +100,23 @@ describe Rack::Sendfile do
     end
   end
 
-  it "sets X-Accel-Redirect response header and discards body" do
+  it "does not sets X-Accel-Redirect response header when it is set via X-Sendfile-Type" do
     headers = {
       'HTTP_X_SENDFILE_TYPE' => 'X-Accel-Redirect',
       'HTTP_X_ACCEL_MAPPING' => "#{Dir.tmpdir}/=/foo/bar/"
     }
     request headers do |response|
+      response.should.be.ok
+      response.body.should.equal 'Hello World'
+      response.headers.should.not.include 'X-Accel-Redirect'
+    end
+  end
+
+  it "sets X-Accel-Redirect response header and discards body when set explicitly" do
+    headers = {
+      'HTTP_X_ACCEL_MAPPING' => "#{Dir.tmpdir}/=/foo/bar/"
+    }
+    request(headers, sendfile_body, [], 'X-Accel-Redirect') do |response|
       response.should.be.ok
       response.body.should.be.empty
       response.headers['Content-Length'].should.equal '0'
@@ -78,7 +125,7 @@ describe Rack::Sendfile do
   end
 
   it 'writes to rack.error when no X-Accel-Mapping is specified' do
-    request 'HTTP_X_SENDFILE_TYPE' => 'X-Accel-Redirect' do |response|
+    request({}, sendfile_body, [], 'X-Accel-Redirect') do |response|
       response.should.be.ok
       response.body.should.equal 'Hello World'
       response.headers.should.not.include 'X-Accel-Redirect'
@@ -87,7 +134,7 @@ describe Rack::Sendfile do
   end
 
   it 'does nothing when body does not respond to #to_path' do
-    request({'HTTP_X_SENDFILE_TYPE' => 'X-Sendfile'}, ['Not a file...']) do |response|
+    request({ 'HTTP_X_SENDFILE_TYPE' => 'X-Sendfile' }, ['Not a file...']) do |response|
       response.body.should.equal 'Not a file...'
       response.headers.should.not.include 'X-Sendfile'
     end
