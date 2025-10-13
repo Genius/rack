@@ -95,6 +95,23 @@ module Rack
     # and do not count. Defaults to 16 MB.
     self.buffered_upload_bytesize_limit = (ENV['RACK_MULTIPART_BUFFERED_UPLOAD_BYTESIZE_LIMIT'] || 16 * 1024 * 1024).to_i
 
+    def check_query_string(qs, sep)
+      if qs
+        if qs.bytesize > Rack::Utils.bytesize_limit
+          raise QueryLimitError, "total query size exceeds limit (#{Rack::Utils.bytesize_limit})"
+        end
+
+        if (param_count = qs.count(sep.is_a?(String) ? sep : '&')) >= Rack::Utils.params_limit
+          raise QueryLimitError, "total number of query parameters (#{param_count+1}) exceeds limit (#{Rack::Utils.params_limit})"
+        end
+
+        qs
+      else
+        ''
+      end
+    end
+    module_function :check_query_string
+
     # Stolen from Mongrel, with some small modifications:
     # Parses a query string by breaking it up at the '&'
     # and ';' characters.  You can also use this to parse
@@ -105,7 +122,7 @@ module Rack
 
       params = KeySpaceConstrainedParams.new
 
-      (qs || '').split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
+      check_query_string(ds, d).split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
         next if p.empty?
         k, v = p.split('=', 2).map(&unescaper)
 
@@ -132,7 +149,7 @@ module Rack
     def parse_nested_query(qs, d = nil)
       params = KeySpaceConstrainedParams.new
 
-      (qs || '').split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
+      check_query_string(ds, d).split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
         k, v = p.split('=', 2).map { |s| unescape(s) }
 
         normalize_params(params, k, v)
