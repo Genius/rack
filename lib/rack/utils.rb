@@ -64,6 +64,7 @@ module Rack
       attr_accessor :param_depth_limit
       attr_accessor :multipart_total_part_limit
       attr_accessor :multipart_file_limit
+      attr_accessor :buffered_upload_bytesize_limit # CVE-2025-61771
 
       # multipart_part_limit is the original name of multipart_file_limit, but
       # the limit only counts parts with filenames.
@@ -88,6 +89,11 @@ module Rack
     # The maximum total number of parts a request can contain. Accepting too
     # many can lead to excessive memory use and parsing time.
     self.multipart_total_part_limit = (ENV['RACK_MULTIPART_TOTAL_PART_LIMIT'] || 4096).to_i
+
+    # This variable sets the maximum total size of all parts and headers
+    # of a multipart request. Parts with filenames are written to tempfiles
+    # and do not count. Defaults to 16 MB.
+    self.buffered_upload_bytesize_limit = (ENV['RACK_MULTIPART_BUFFERED_UPLOAD_BYTESIZE_LIMIT'] || 16 * 1024 * 1024).to_i
 
     # Stolen from Mongrel, with some small modifications:
     # Parses a query string by breaking it up at the '&'
