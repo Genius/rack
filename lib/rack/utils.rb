@@ -31,6 +31,10 @@ module Rack
     # sequence.
     class InvalidParameterError < ArgumentError; end
 
+    # QueryLimitError is for errors raised when the query provided exceeds one
+    # of the query parser limits.
+    class QueryLimitError < RangeError; end
+
     # URI escapes. (CGI style space to +)
     def escape(s)
       URI.encode_www_form_component(s)
@@ -64,6 +68,8 @@ module Rack
       attr_accessor :param_depth_limit
       attr_accessor :multipart_total_part_limit
       attr_accessor :multipart_file_limit
+      attr_accessor :bytesize_limit # CVE-2025-46727
+      attr_accessor :params_limit # CVE-2025-46727
       attr_accessor :buffered_upload_bytesize_limit # CVE-2025-61771
 
       # multipart_part_limit is the original name of multipart_file_limit, but
@@ -89,6 +95,17 @@ module Rack
     # The maximum total number of parts a request can contain. Accepting too
     # many can lead to excessive memory use and parsing time.
     self.multipart_total_part_limit = (ENV['RACK_MULTIPART_TOTAL_PART_LIMIT'] || 4096).to_i
+
+    # This sets the default for the maximum query string bytesize that we will attempt to parse.
+    # Attempts to use a query string that exceeds this number of bytes will result in a
+    # `Rack::Utils::QueryLimitError` exception.
+    self.bytesize_limit = (ENV['RACK_QUERY_PARSER_BYTESIZE_LIMIT'] || 4194304).to_i
+
+    # This variable sets the default for the maximum number of query
+    # parameters that we will attempt to parse. Attempts to use a
+    # query string with more than this many query parameters will result in a
+    # `Rack::Utils::QueryLimitError` exception.
+    self.params_limit = (ENV['RACK_QUERY_PARSER_PARAMS_LIMIT'] || 4096).to_i
 
     # This variable sets the maximum total size of all parts and headers
     # of a multipart request. Parts with filenames are written to tempfiles
@@ -122,7 +139,7 @@ module Rack
 
       params = KeySpaceConstrainedParams.new
 
-      check_query_string(ds, d).split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
+      check_query_string(qs, d).split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
         next if p.empty?
         k, v = p.split('=', 2).map(&unescaper)
 
@@ -149,7 +166,7 @@ module Rack
     def parse_nested_query(qs, d = nil)
       params = KeySpaceConstrainedParams.new
 
-      check_query_string(ds, d).split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
+      check_query_string(qs, d).split(d ? /[#{d}] */n : DEFAULT_SEP).each do |p|
         k, v = p.split('=', 2).map { |s| unescape(s) }
 
         normalize_params(params, k, v)

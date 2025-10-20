@@ -116,7 +116,7 @@ module Rack
             return if read_buffer == full_boundary
           end
 
-          raise EOFError, "bad content body" if Utils.bytesize(@buf) >= @bufsize
+          raise EOFError, "multipart boundary not found within limit" if Utils.bytesize(@buf) >= @bufsize
         end
       end
 

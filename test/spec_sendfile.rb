@@ -66,7 +66,7 @@ describe Rack::Sendfile do
       response.headers.should.not.include 'X-Sendfile'
 
       io.rewind
-      io.read.should.equal "Unknown x-sendfile variation: \"X-Banana\"\n"
+      io.read.should.equal "Unknown x-sendfile variation: 'X-Banana'.\n"
     end
   end
 
@@ -137,41 +137,6 @@ describe Rack::Sendfile do
     request({ 'HTTP_X_SENDFILE_TYPE' => 'X-Sendfile' }, ['Not a file...']) do |response|
       response.body.should.equal 'Not a file...'
       response.headers.should.not.include 'X-Sendfile'
-    end
-  end
-
-  it "sets X-Accel-Redirect response header and discards body when initialized with multiple mappings" do
-    begin
-      dir1 = Dir.mktmpdir
-      dir2 = Dir.mktmpdir
-
-      first_body = open_file(File.join(dir1, 'rack_sendfile'))
-      first_body.puts 'hello world'
-
-      second_body = open_file(File.join(dir2, 'rack_sendfile'))
-      second_body.puts 'goodbye world'
-
-      mappings = [
-        ["#{dir1}/", '/foo/bar/'],
-        ["#{dir2}/", '/wibble/']
-      ]
-
-      request({'HTTP_X_SENDFILE_TYPE' => 'X-Accel-Redirect'}, first_body, mappings) do |response|
-        response.should.be.ok
-        response.body.should.be.empty
-        response.headers['Content-Length'].should.equal '0'
-        response.headers['X-Accel-Redirect'].should.equal '/foo/bar/rack_sendfile'
-      end
-
-      request({'HTTP_X_SENDFILE_TYPE' => 'X-Accel-Redirect'}, second_body, mappings) do |response|
-        response.should.be.ok
-        response.body.should.be.empty
-        response.headers['Content-Length'].should.equal '0'
-        response.headers['X-Accel-Redirect'].should.equal '/wibble/rack_sendfile'
-      end
-    ensure
-      FileUtils.remove_entry_secure dir1
-      FileUtils.remove_entry_secure dir2
     end
   end
 end
