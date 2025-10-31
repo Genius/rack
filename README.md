@@ -12,12 +12,10 @@ Rack applications should conform to.
 This is a fork of the official [rack gem](https://github.com/rack/rack) with
 backported security fixes for:
 
-*   [rack 2.2](https://github.com/rails-lts/rack/tree/lts-2-2-stable)
-    (CWE-444)
 *   [rack 1.6](https://github.com/rails-lts/rack/tree/lts-1-6-stable)
-    (CVE-2020-8161, CVE-2020-8184, CVE-2022-30122, CVE-2022-30123, CWE-444, CVE-2022-44570, CVE-2022-44571, CVE-2023-27530, CVE-2023-27539, CVE-2024-25126, CVE-2024-26141, CVE-2024-26146)
+    (CVE-2020-8161, CVE-2020-8184, CVE-2022-30122, CVE-2022-30123, CWE-444)
 *   [rack 1.4](https://github.com/rails-lts/rack/tree/lts-rack-1.4)
-    (CVE-2018-16471, CVE-2020-8161, CVE-2020-8184, CVE-2022-30122, CVE-2022-30123, CWE-444, CWE-290, CVE-2022-44570, CVE-2022-44571, CVE-2023-27530, CVE-2023-27539, CVE-2024-25126, CVE-2024-26141, CVE-2024-26146)
+    (CVE-2018-16471, CVE-2020-8161, CVE-2020-8184, CVE-2022-30122, CVE-2022-30123, CWE-444, CWE-290)
 
 
 To use it, you need to add it to the Gemfile like this:
@@ -243,6 +241,15 @@ The default is 4096, which means that a single request can't contain more than
 Set to 0 for no limit.
 
 Can also be set via the `RACK_MULTIPART_TOTAL_PART_LIMIT` environment variable.
+
+
+### multipart_buffered_upload_bytesize_limit
+
+The limit of the bytesize of all multipart parts (header and body), excluding the (body) of parts with a "filename".
+
+Defaults to 16 MB, which means it is not possible for multipart forms to contain form data of a total size greater than 16 MB. Uploaded files can be larger.
+
+Can also be set via the `RACK_MULTIPART_BUFFERED_UPLOAD_BYTESIZE_LIMIT` environment variable.
 
 
 ## History

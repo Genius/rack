@@ -2,7 +2,7 @@ require File.expand_path('../lib/rack/version', __FILE__)
 
 Gem::Specification.new do |s|
   s.name            = "rack"
-  s.version         = "1.4.7"
+  s.version         = Rack::RELEASE
   s.platform        = Gem::Platform::RUBY
   s.summary         = "a modular Ruby webserver interface"
   s.license         = "MIT"

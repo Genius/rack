@@ -83,8 +83,7 @@ end
 desc "Run all the fast + platform agnostic tests"
 task :test => 'SPEC' do
   opts     = ENV['TEST'] || '-a'
-  specopts = ENV['TESTOPTS'] ||
-    "-q -t '^(?!Rack::Adapter|Rack::Session::Memcache|Rack::Server|Rack::Handler)'"
+  specopts = ENV['TESTOPTS'] || '-q'
 
   sh "bacon -I./lib:./test #{opts} #{specopts}"
 end
@@ -122,3 +121,5 @@ task :pushsite => %w[pushdoc] do
   sh "rsync -avz site/ rack.rubyforge.org:/var/www/gforge-projects/rack/"
   sh "cd site && git push"
 end
+
+task :package => :gem

@@ -6,7 +6,7 @@ require 'timeout'
 describe Rack::Utils do
 
   # A helper method which checks
-  # if certain query parameters 
+  # if certain query parameters
   # are equal.
   def equal_query_to(query)
     parts = query.split('&')
@@ -78,7 +78,7 @@ describe Rack::Utils do
       Rack::Utils.escape("ø".encode("ISO-8859-1")).should.equal "%F8"
     end
   end
-  
+
   should "not hang on escaping long strings that end in % (http://redmine.ruby-lang.org/issues/5149)" do
     lambda {
       Timeout.timeout(1) do
@@ -461,6 +461,28 @@ describe Rack::Utils do
 
   should "clean slash only paths" do
     Rack::Utils.clean_path_info("/").should.equal "/"
+  end
+
+  should "respect bytesize_limit to specify maximum size of query string to parse" do
+    Rack::Utils.bytesize_limit = 3
+    Rack::Utils.parse_query("a=a").should.equal({"a" => "a"})
+    Rack::Utils.parse_nested_query("a=a").should.equal({"a" => "a"})
+    Rack::Utils.parse_nested_query("a=a", '&').should.equal({"a" => "a"})
+    proc { Rack::Utils.parse_query("a=aa") }.should.raise(Rack::Utils::QueryLimitError)
+    proc { Rack::Utils.parse_nested_query("a=aa") }.should.raise(Rack::Utils::QueryLimitError)
+    proc { Rack::Utils.parse_nested_query("a=aa", '&') }.should.raise(Rack::Utils::QueryLimitError)
+    Rack::Utils.bytesize_limit = 4194304
+  end
+
+  it "accepts params_limit to specify maximum number of query parameters to parse" do
+    Rack::Utils.params_limit = 2
+    Rack::Utils.parse_query("a=a&b=b").should.equal({"a" => "a", "b" => "b"})
+    Rack::Utils.parse_nested_query("a=a&b=b").should.equal({"a" => "a", "b" => "b"})
+    Rack::Utils.parse_nested_query("a=a&b=b", '&').should.equal({"a" => "a", "b" => "b"})
+    proc { Rack::Utils.parse_query("a=a&b=b&c=c") }.should.raise(Rack::Utils::QueryLimitError)
+    proc { Rack::Utils.parse_nested_query("a=a&b=b&c=c", '&') }.should.raise(Rack::Utils::QueryLimitError)
+    proc { Rack::Utils.parse_query("b[]=a&b[]=b&b[]=c") }.should.raise(Rack::Utils::QueryLimitError)
+    Rack::Utils.params_limit = 4096
   end
 end
 

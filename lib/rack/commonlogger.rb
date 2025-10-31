@@ -21,7 +21,7 @@ module Rack
     #   lilith.local - - [07/Aug/2006 23:58:02 -0400] "GET / HTTP/1.1" 500 -
     #
     #   %{%s - %s [%s] "%s %s%s %s" %d %s\n} %
-    FORMAT = %{%s - %s [%s] "%s %s%s %s" %d %s %0.4f\n}
+    FORMAT = %{%s - %s [%s] "%s %s%s %s" %d %s %0.4f }
 
     def initialize(app, logger=nil)
       @app = app
@@ -54,7 +54,8 @@ module Rack
         length,
         now - began_at ]
 
-      msg.gsub!(/[^[:print:]\n]/) { |c| "\\x%02x" % [c.ord] }
+      msg.gsub!(/[^[:print:]]/) { |c| "\\x%02x" % [c.ord] }
+      msg[-1] = "\n"
 
       logger = @logger || env['rack.errors']
 
