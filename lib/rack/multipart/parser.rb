@@ -7,6 +7,7 @@ module Rack
 
     class Parser
       BUFSIZE = 16384
+      MIME_HEADER_BYTESIZE_LIMIT = 64 * 1024
       DUMMY = Struct.new(:parse).new
 
       def self.create(env)
@@ -47,6 +48,8 @@ module Rack
 
         @rx = /(?:#{EOL})?#{Regexp.quote(@boundary)}(#{EOL}|--)/n
         @full_boundary = @boundary + EOL
+
+        @retained_size = 0
       end
 
       def parse
@@ -70,13 +73,14 @@ module Rack
             parts += 1
             if parts >= Utils.multipart_total_part_limit
               close_tempfiles
-              raise MultipartTotalPartLimitError, 'Maximum total multiparts in content reached' 
+              raise MultipartTotalPartLimitError, 'Maximum total multiparts in content reached'
             end
           end
 
           # Save the rest.
           if i = @buf.index(rx)
             body << @buf.slice!(0, i)
+            update_retained_size(i) unless filename
             @buf.slice!(0, @boundary_size+2)
 
             @content_length = -1  if $1 == "--"
@@ -113,7 +117,7 @@ module Rack
             return if read_buffer == full_boundary
           end
 
-          raise EOFError, "bad content body" if Utils.bytesize(@buf) >= @bufsize
+          raise EOFError, "multipart boundary not found within limit" if Utils.bytesize(@buf) >= @bufsize
         end
       end
 
@@ -133,6 +137,7 @@ module Rack
 
             @buf.slice!(0, 2)          # Second \r\n
 
+            update_retained_size(head.bytesize)
             content_type = head[MULTIPART_CONTENT_TYPE, 1]
             name = head[MULTIPART_CONTENT_DISPOSITION, 1] || head[MULTIPART_CONTENT_ID, 1]
 
@@ -151,14 +156,19 @@ module Rack
           end
 
           # Save the read body part.
-          if head && (@boundary_size+4 < @buf.size)
-            body << @buf.slice!(0, @buf.size - (@boundary_size+4))
+          size_to_read = @buf.size - (@boundary_size+4)
+          if head && size_to_read > 0
+            body << @buf.slice!(0, size_to_read)
+            update_retained_size(size_to_read) unless filename
           end
 
           content = @io.read(@content_length && @bufsize >= @content_length ? @content_length : @bufsize)
           raise EOFError, "bad content body"  if content.nil? || content.empty?
 
           @buf << content
+
+          raise EOFError, "multipart mime part header too large" if @buf.size > MIME_HEADER_BYTESIZE_LIMIT
+
           @content_length -= content.size if @content_length
         end
 
@@ -264,6 +274,13 @@ module Rack
         end
 
         yield data
+      end
+
+      def update_retained_size(size)
+        @retained_size += size
+        if @retained_size > Utils.buffered_upload_bytesize_limit
+          raise EOFError, "multipart data over retained size limit"
+        end
       end
     end
   end

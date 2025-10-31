@@ -290,6 +290,93 @@ describe Rack::Request do
     req.POST.should.equal "foo" => "bar", "quux" => "bla"
   end
 
+  should "limit POST body read to bytesize_limit when parsing url-encoded data" do
+    # Create a mock input that tracks read calls
+    reads = []
+    mock_input = Object.new
+    mock_input.define_singleton_method(:read) do |len=nil|
+      reads << len
+      # Return mutable string
+      "foo=bar".dup
+    end
+    mock_input.define_singleton_method(:rewind) do
+      # no-op for compatibility
+    end
+
+    request = Rack::Request.new \
+      Rack::MockRequest.env_for("/",
+        'REQUEST_METHOD' => 'POST',
+        'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+        :input => mock_input)
+
+    request.POST.should.equal "foo" => "bar"
+
+    # Verify read was called with a limit (bytesize_limit + 2), not nil
+    reads.size.should.equal 1
+    reads.first.should.not.be.nil
+    reads.first.should.equal(Rack::Utils.bytesize_limit + 2)
+  end
+
+  should "handle nil return from rack.input.read when parsing url-encoded data" do
+    # Simulate an input that returns nil on read
+    mock_input = Object.new
+    mock_input.define_singleton_method(:read) do |len=nil|
+      nil
+    end
+    mock_input.define_singleton_method(:rewind) do
+      # no-op for compatibility
+    end
+
+    request = Rack::Request.new \
+      Rack::MockRequest.env_for("/",
+        'REQUEST_METHOD' => 'POST',
+        'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+        :input => mock_input)
+
+    # Should handle nil gracefully and return empty hash
+    request.POST.should.equal({})
+  end
+
+  should "truncate POST body at bytesize_limit when parsing url-encoded data" do
+    # Create input larger than limit
+    large_body = "a=1&" * 1000000  # Very large body
+
+    request = Rack::Request.new \
+      Rack::MockRequest.env_for("/",
+        'REQUEST_METHOD' => 'POST',
+        'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+        :input => large_body)
+
+    # Should parse only up to the limit without reading entire body into memory
+    # The actual parsing may fail due to size limit, which is expected
+    proc { request.POST }.should.raise Rack::Utils::QueryLimitError
+  end
+
+  should "clean up Safari's ajax POST body with limited read" do
+    # Verify Safari null-byte cleanup still works with bounded read
+    reads = []
+    mock_input = Object.new
+    mock_input.define_singleton_method(:read) do |len=nil|
+      reads << len
+      # Return mutable string (dup ensures it's not frozen)
+      "foo=bar\0".dup
+    end
+    mock_input.define_singleton_method(:rewind) do
+      # no-op for compatibility
+    end
+
+    request = Rack::Request.new \
+      Rack::MockRequest.env_for("/",
+        'REQUEST_METHOD' => 'POST',
+        'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
+        :input => mock_input)
+
+    request.POST.should.equal "foo" => "bar"
+
+    # Verify bounded read was used
+    reads.first.should.not.be.nil
+  end
+
   should "get value by key from params with #[]" do
     req = Rack::Request.new \
       Rack::MockRequest.env_for("?foo=quux")
